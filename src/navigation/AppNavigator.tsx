@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 import HomeScreen from '../screens/HomeScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -12,8 +13,24 @@ import { View, ActivityIndicator, Text, Button } from 'react-native';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
+// Configure linking
+const linking = {
+  prefixes: [
+    'financeglance://', 
+    'https://financeglance.app',
+    'https://*.financeglance.app'
+  ],
+  config: {
+    screens: {
+      Login: 'login',
+      Onboarding: 'onboarding',
+      Home: 'home',
+    },
+  },
+};
+
 const AppNavigator = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshSession } = useAuth();
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +48,7 @@ const AppNavigator = () => {
   }, [loading, authLoading]);
 
   useEffect(() => {
-    console.log('Auth state changed. User:', user ? 'Logged in' : 'Not logged in');
+    console.log('Auth state in AppNavigator. User:', user ? 'Logged in' : 'Not logged in');
     
     const checkOnboardingStatus = async () => {
       try {
@@ -60,6 +77,8 @@ const AppNavigator = () => {
       setHasCompletedOnboarding(false);
       setError(null);
       setLoadingTimeout(false);
+      // Force refresh auth session
+      await refreshSession();
       // Force refresh
       setLoading(true);
       setTimeout(() => setLoading(false), 100);
@@ -67,6 +86,13 @@ const AppNavigator = () => {
       console.error('Error resetting app state:', e);
     }
   };
+
+  // Force navigation to onboarding after login if we're stuck
+  useEffect(() => {
+    if (user && hasCompletedOnboarding === null) {
+      setHasCompletedOnboarding(false);
+    }
+  }, [user, hasCompletedOnboarding]);
 
   if (authLoading || loading) {
     // Show loading spinner with timeout detection
@@ -94,13 +120,8 @@ const AppNavigator = () => {
     );
   }
 
-  // Force navigation to onboarding after login if we're stuck
-  if (user && hasCompletedOnboarding === null) {
-    setHasCompletedOnboarding(false);
-  }
-
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <Stack.Screen name="Login" component={LoginScreen} />
@@ -115,4 +136,3 @@ const AppNavigator = () => {
 };
 
 export default AppNavigator;
-

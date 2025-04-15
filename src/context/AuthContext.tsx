@@ -20,7 +20,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { signInWithGoogle: googleSignIn, createSessionFromUrl: googleCreateSessionFromUrl } = useGoogleAuth();
+  
+  const { 
+    signInWithGoogle: googleSignIn, 
+    createSessionFromUrl: googleCreateSessionFromUrl,
+    getInitialURL,
+    addLinkingListener
+  } = useGoogleAuth();
 
   const refreshSession = async () => {
     try {
@@ -37,6 +43,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Handle initial deep link
+  useEffect(() => {
+    const handleInitialLink = async () => {
+      try {
+        const initialUrl = await getInitialURL();
+        if (initialUrl) {
+          console.log('Processing initial deep link URL:', initialUrl);
+          await googleCreateSessionFromUrl(initialUrl);
+          await refreshSession();
+        }
+      } catch (error) {
+        console.error('Error handling initial link:', error);
+      }
+    };
+
+    handleInitialLink();
+  }, []);
+
   useEffect(() => {
     // Check for active session on mount
     const checkSession = async () => {
@@ -45,6 +69,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     checkSession();
 
+    // Set up deep link listener
+    const linkingSubscription = addLinkingListener(async (url) => {
+      console.log('Auth deep link received:', url);
+      await googleCreateSessionFromUrl(url);
+      await refreshSession();
+    });
+
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       console.log('Auth state changed:', event);
@@ -52,9 +83,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(newSession?.user || null);
     });
 
-    // Cleanup subscription
+    // Cleanup subscriptions
     return () => {
       subscription.unsubscribe();
+      linkingSubscription.remove();
     };
   }, []);
 
